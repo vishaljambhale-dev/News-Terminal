@@ -1,0 +1,8 @@
+streamlit
+pandas
+httpx
+feedparser
+rapidfuzz
+pytz
+python-dateutil
+openpyxl
