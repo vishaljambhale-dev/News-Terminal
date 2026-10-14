@@ -1,6 +1,3 @@
-import nest_asyncio
-nest_asyncio.apply()
-
 import asyncio
 import datetime as dt
 import urllib.parse
