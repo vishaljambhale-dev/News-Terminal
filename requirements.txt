@@ -6,3 +6,4 @@ rapidfuzz
 pytz
 python-dateutil
 openpyxl
+streamlit-autorefresh
