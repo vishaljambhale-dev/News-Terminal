@@ -213,15 +213,21 @@ async def poll_all_sources_async(symbols: list[str]) -> list[dict]:
 
 
 def fetch_all_sources(symbols: list[str], hours_back: int = 24) -> list[dict]:
-    raw_articles = asyncio.run(poll_all_sources_async(symbols))
-    cutoff = dt.datetime.now(IST) - dt.timedelta(hours=hours_back)
+    # 1. Manually create and manage a new event loop for this specific Streamlit thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
+    try:
+        raw_articles = loop.run_until_complete(poll_all_sources_async(symbols))
+    finally:
+        loop.close()
+    
+    # 2. Filter the results
+    cutoff = dt.datetime.now(IST) - dt.timedelta(hours=hours_back)
     filtered_articles = []
-    symbols_lower = [s.lower() for s in symbols]
     
     for art in raw_articles:
         if art["published_dt"] >= cutoff:
-            # Match symbol based on headline or summary
             text_check = f"{art['headline']} {art['summary']}".lower()
             matched_symbols = [sym for sym in symbols if sym.lower() in text_check]
             
