@@ -144,7 +144,7 @@ def get_market_status():
 if "watchlist" not in st.session_state:
     st.session_state["watchlist"] = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "TATAMOTORS"]
 
-market_data = fetch_market_data(st.session_state["watchlist"][:15]) # Limit ticker to 15 stocks
+market_data = fetch_market_data(st.session_state["watchlist"][:15])
 
 # ---------------------------------------------------------------------
 # TICKER TAPE
@@ -181,29 +181,26 @@ with tab_setup:
 
 with tab_news:
     # -----------------------------------------------------------------
-    # KPI CARDS ROW
+    # KPI CARDS ROW (UNINDENTED HTML TO PREVENT PREFORMATTED CODE BLOCK)
     # -----------------------------------------------------------------
-    kpi_html = '<div class="kpi-container">'
+    kpi_html = '<div class="kpi-container">\n'
     for idx_name, idx_sym in [("NIFTY 50", "^NSEI"), ("NIFTY BANK", "^NSEBANK")]:
         if idx_sym in market_data:
             val = market_data[idx_sym]
             color_class = "color-green" if val["change"] >= 0 else "color-red"
             bg_class = "bg-green" if val["change"] >= 0 else "bg-red"
             sign = "+" if val["change"] >= 0 else ""
-            kpi_html += f"""
-            <div class="kpi-card {bg_class}">
-                <div class="kpi-title">{idx_name}</div>
-                <div class="kpi-value">{val["price"]:,.2f}</div>
-                <div class="kpi-change {color_class}">{sign}{val["change"]:.2f}%</div>
-            </div>
-            """
-    kpi_html += f"""
-        <div class="kpi-card">
-            <div class="kpi-title">MARKET STATUS</div>
-            <div class="kpi-value" style="font-size: 14px; margin-top: 5px;">{get_market_status()}</div>
-        </div>
-    </div>
-    """
+            kpi_html += f'<div class="kpi-card {bg_class}">\n'
+            kpi_html += f'<div class="kpi-title">{idx_name}</div>\n'
+            kpi_html += f'<div class="kpi-value">{val["price"]:,.2f}</div>\n'
+            kpi_html += f'<div class="kpi-change {color_class}">{sign}{val["change"]:.2f}%</div>\n'
+            kpi_html += '</div>\n'
+
+    kpi_html += '<div class="kpi-card">\n'
+    kpi_html += '<div class="kpi-title">MARKET STATUS</div>\n'
+    kpi_html += f'<div class="kpi-value" style="font-size: 14px; margin-top: 5px;">{get_market_status()}</div>\n'
+    kpi_html += '</div>\n</div>'
+
     st.markdown(kpi_html, unsafe_allow_html=True)
 
     # -----------------------------------------------------------------
@@ -215,7 +212,6 @@ with tab_news:
         st.markdown("### NIFTY 50 Intraday")
         chart_df = fetch_intraday_chart("^NSEI")
         if not chart_df.empty:
-            # Handle multi-index columns for newer versions of yfinance
             if isinstance(chart_df.columns, pd.MultiIndex):
                 close_col = chart_df['Close'].squeeze()
                 open_col = chart_df['Open'].squeeze()
@@ -223,7 +219,6 @@ with tab_news:
                 close_col = chart_df['Close']
                 open_col = chart_df['Open']
                 
-            # Safely extract scalar floats to fix the ValueError
             last_close = float(close_col.iloc[-1])
             first_open = float(open_col.iloc[0])
             is_positive = last_close >= first_open
@@ -231,16 +226,14 @@ with tab_news:
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=chart_df.index, y=close_col,
-                fill='tozeroy',
                 mode='lines',
-                line=dict(color='#0f9d58' if is_positive else '#d23f31', width=2),
-                fillcolor='rgba(15, 157, 88, 0.1)' if is_positive else 'rgba(210, 63, 49, 0.1)'
+                line=dict(color='#0f9d58' if is_positive else '#d23f31', width=2)
             ))
             fig.update_layout(
                 margin=dict(l=0, r=0, t=10, b=0),
                 height=250,
                 xaxis=dict(showgrid=False, visible=False),
-                yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)'),
+                yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', autorange=True),
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)'
             )
