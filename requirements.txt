@@ -7,3 +7,5 @@ pytz
 python-dateutil
 openpyxl
 streamlit-autorefresh
+yfinance
+plotly
