@@ -3,210 +3,302 @@ import streamlit as st
 import pandas as pd
 import datetime as dt
 import pytz
+import yfinance as yf
+import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 from app.sources import fetch_all_sources
 from app.dedup_classify import classify_categories, classify_impact, deduplicate_articles
 
 IST = pytz.timezone("Asia/Kolkata")
 
-st.set_page_config(page_title="NSE Live News Terminal", layout="wide")
+st.set_page_config(page_title="NSE Live News Terminal", layout="wide", initial_sidebar_state="collapsed")
 
 # ---------------------------------------------------------------------
-# MARKET SESSION UTILITY
+# HIGH-DENSITY CUSTOM CSS
 # ---------------------------------------------------------------------
+st.markdown("""
+<style>
+    /* Reduce overall padding and whitespace */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* Shrink font sizes for higher density */
+    html, body, p, div, span, label {
+        font-size: 13px !important;
+    }
+    h1 { font-size: 22px !important; margin-bottom: 0px !important; padding-bottom: 0px !important; }
+    h2 { font-size: 18px !important; }
+    h3 { font-size: 15px !important; }
+    
+    /* Ticker Tape Animation & Styling */
+    .ticker-wrap {
+        width: 100%;
+        overflow: hidden;
+        background-color: #1e1e1e;
+        color: #ffffff;
+        padding-left: 100%;
+        box-sizing: content-box;
+        border-bottom: 1px solid #333;
+        margin-bottom: 15px;
+    }
+    .ticker {
+        display: inline-block;
+        white-space: nowrap;
+        padding-right: 100%;
+        animation: ticker 40s linear infinite;
+        font-family: monospace;
+        font-size: 14px;
+        line-height: 25px;
+    }
+    .ticker__item {
+        display: inline-block;
+        padding: 0 20px;
+    }
+    @keyframes ticker {
+        0% { transform: translate3d(0, 0, 0); }
+        100% { transform: translate3d(-100%, 0, 0); }
+    }
+    
+    /* KPI Cards Styling */
+    .kpi-container {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    .kpi-card {
+        flex: 1;
+        padding: 10px 15px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+        background-color: #f8f9fa;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    [data-theme="dark"] .kpi-card {
+        background-color: #262730;
+        border-color: #444;
+    }
+    .kpi-title { font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; color: #555;}
+    [data-theme="dark"] .kpi-title { color: #aaa; }
+    .kpi-value { font-size: 18px; font-weight: bold; margin-bottom: 2px;}
+    .kpi-change { font-size: 12px; font-weight: bold; }
+    .color-green { color: #0f9d58; }
+    .color-red { color: #d23f31; }
+    .bg-green { background-color: rgba(15, 157, 88, 0.1); border: 1px solid rgba(15, 157, 88, 0.3); }
+    .bg-red { background-color: rgba(210, 63, 49, 0.1); border: 1px solid rgba(210, 63, 49, 0.3); }
+    
+    /* Compact Dataframe */
+    .stDataFrame { font-size: 12px !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------
+# MARKET DATA UTILITIES
+# ---------------------------------------------------------------------
+@st.cache_data(ttl=60)
+def fetch_market_data(symbols):
+    """Fetches real-time market data for the ticker tape and KPIs."""
+    data = {}
+    try:
+        tickers = " ".join([f"{sym}.NS" for sym in symbols] + ["^NSEI", "^NSEBANK"])
+        df = yf.download(tickers, period="2d", interval="1d", progress=False)['Close']
+        
+        for sym in symbols + ["^NSEI", "^NSEBANK"]:
+            lookup = f"{sym}.NS" if not sym.startswith("^") else sym
+            if lookup in df.columns and len(df[lookup].dropna()) >= 2:
+                latest = df[lookup].iloc[-1]
+                prev = df[lookup].iloc[-2]
+                pct_change = ((latest - prev) / prev) * 100
+                data[sym] = {"price": latest, "change": pct_change}
+    except Exception:
+        pass
+    return data
+
+@st.cache_data(ttl=60)
+def fetch_intraday_chart(symbol="^NSEI"):
+    """Fetches intraday 5m data for the market chart."""
+    try:
+        df = yf.download(symbol, period="1d", interval="5m", progress=False)
+        return df
+    except Exception:
+        return pd.DataFrame()
+
 def get_market_status():
     now = dt.datetime.now(IST)
     if now.weekday() >= 5:
         return "CLOSED (WEEKEND)"
-    
     current_time = now.time()
-    pre_open_start = dt.time(9, 0)
-    market_open = dt.time(9, 15)
-    market_close = dt.time(15, 30)
-    
-    if pre_open_start <= current_time < market_open:
+    if dt.time(9, 0) <= current_time < dt.time(9, 15):
         return "PRE-OPEN (09:00 - 09:15 IST)"
-    elif market_open <= current_time <= market_close:
+    elif dt.time(9, 15) <= current_time <= dt.time(15, 30):
         return "OPEN (09:15 - 15:30 IST)"
-    else:
-        return "CLOSED"
-
-market_status = get_market_status()
+    return "CLOSED"
 
 # ---------------------------------------------------------------------
-# HEADER & STATUS BAR
+# INITIALIZATION & STATE
 # ---------------------------------------------------------------------
-col_title, col_status = st.columns([3, 1])
-with col_title:
-    st.title("NSE Live News Terminal")
-    st.markdown("Institutional News Aggregation and Deduplication Desk")
-with col_status:
-    st.info(f"MARKET STATUS: {market_status}")
+if "watchlist" not in st.session_state:
+    st.session_state["watchlist"] = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "TATAMOTORS"]
+
+market_data = fetch_market_data(st.session_state["watchlist"][:15]) # Limit ticker to 15 stocks
 
 # ---------------------------------------------------------------------
-# CONFIGURATION PANEL (TOGGLEABLE)
+# TICKER TAPE
 # ---------------------------------------------------------------------
-with st.expander("Configuration & Watchlist Options", expanded=False):
-    col_left, col_right = st.columns(2)
-
-    with col_left:
-        st.subheader("Watchlist Configuration")
-        uploaded_file = st.file_uploader(
-            "Upload Watchlist (CSV or Excel)",
-            type=["csv", "xlsx"]
-        )
-        
-        default_symbols = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "TATAMOTORS"]
-        custom_symbols = []
-
-        if uploaded_file is not None:
-            try:
-                if uploaded_file.name.endswith(".csv"):
-                    uploaded_df = pd.read_csv(uploaded_file)
-                else:
-                    uploaded_df = pd.read_excel(uploaded_file)
-                
-                possible_cols = [c for c in uploaded_df.columns if "sym" in c.lower() or "stock" in c.lower() or "ticker" in c.lower()]
-                target_col = possible_cols[0] if possible_cols else uploaded_df.columns[0]
-                
-                custom_symbols = uploaded_df[target_col].dropna().astype(str).str.strip().str.upper().tolist()
-                st.success(f"Loaded {len(custom_symbols)} stocks from uploaded file.")
-            except Exception as e:
-                st.error(f"Error parsing uploaded file: {e}")
-
-        combined_symbols = list(set(custom_symbols + default_symbols)) if custom_symbols else default_symbols
-        selected_symbols = st.multiselect("Active Watchlist Stocks", options=combined_symbols, default=custom_symbols or default_symbols)
-
-    with col_right:
-        st.subheader("System Settings")
-        refresh_interval = st.selectbox(
-            "Auto-Refresh Interval",
-            options=["Manual", "1 Minute", "3 Minutes", "5 Minutes"],
-            index=0
-        )
-        
-        lookback_hours = st.slider(
-            "Catch-Up Window (Hours)",
-            min_value=1,
-            max_value=72,
-            value=24
-        )
-        
-        impact_filter = st.multiselect(
-            "Impact Level Filter",
-            options=["HIGH", "MEDIUM", "LOW"],
-            default=["HIGH", "MEDIUM", "LOW"]
-        )
+ticker_html = '<div class="ticker-wrap"><div class="ticker">'
+for sym, details in market_data.items():
+    if not sym.startswith("^"):
+        color = "#0f9d58" if details["change"] >= 0 else "#d23f31"
+        sign = "+" if details["change"] >= 0 else ""
+        ticker_html += f'<div class="ticker__item">{sym} <span style="color:{color}">{details["price"]:.2f} ({sign}{details["change"]:.2f}%)</span></div>'
+ticker_html += '</div></div>'
+st.markdown(ticker_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
-# AUTO-REFRESH LOGIC
+# NAVIGATION TABS
 # ---------------------------------------------------------------------
-if refresh_interval != "Manual":
-    interval_ms = int(refresh_interval.split()[0]) * 60000
-    st_autorefresh(interval=interval_ms, key="data_refresh_timer")
+tab_news, tab_setup = st.tabs(["LIVE NEWS TERMINAL", "WATCHLIST SETUP"])
 
-st.markdown("---")
-
-# ---------------------------------------------------------------------
-# DATA FETCHING
-# ---------------------------------------------------------------------
-fetch_triggered = st.button("Fetch & Process News", type="primary")
-
-if fetch_triggered or (refresh_interval != "Manual"):
-    if not selected_symbols:
-        st.warning("Please select at least one stock ticker in the configuration panel.")
-    else:
-        with st.spinner("Polling active sources..."):
-            raw_articles = fetch_all_sources(selected_symbols, hours_back=lookback_hours)
+with tab_setup:
+    st.markdown("### Watchlist Configuration")
+    uploaded_file = st.file_uploader("Upload Watchlist (CSV or Excel)", type=["csv", "xlsx"])
+    
+    if uploaded_file is not None:
+        try:
+            df_upload = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file)
+            col_target = [c for c in df_upload.columns if "sym" in c.lower() or "stock" in c.lower()][0]
+            new_symbols = df_upload[col_target].dropna().astype(str).str.strip().str.upper().tolist()
+            st.session_state["watchlist"] = new_symbols
+            st.success(f"Watchlist updated with {len(new_symbols)} symbols.")
+        except Exception:
+            st.error("Failed to parse file. Ensure it contains a column named 'Symbol'.")
             
-            if raw_articles:
-                processed = []
-                for art in raw_articles:
-                    art["category"] = ", ".join(classify_categories(art["headline"]))
-                    art["impact"] = classify_impact(art["headline"])
-                    processed.append(art)
+    st.multiselect("Active Watchlist", options=st.session_state["watchlist"], default=st.session_state["watchlist"], disabled=True)
 
-                clean_articles = deduplicate_articles(processed)
-                st.session_state["news_df"] = pd.DataFrame(clean_articles)
-            else:
-                st.session_state["news_df"] = pd.DataFrame()
+with tab_news:
+    # -----------------------------------------------------------------
+    # KPI CARDS ROW
+    # -----------------------------------------------------------------
+    kpi_html = '<div class="kpi-container">'
+    for idx_name, idx_sym in [("NIFTY 50", "^NSEI"), ("NIFTY BANK", "^NSEBANK")]:
+        if idx_sym in market_data:
+            val = market_data[idx_sym]
+            color_class = "color-green" if val["change"] >= 0 else "color-red"
+            bg_class = "bg-green" if val["change"] >= 0 else "bg-red"
+            sign = "+" if val["change"] >= 0 else ""
+            kpi_html += f"""
+            <div class="kpi-card {bg_class}">
+                <div class="kpi-title">{idx_name}</div>
+                <div class="kpi-value">{val["price"]:,.2f}</div>
+                <div class="kpi-change {color_class}">{sign}{val["change"]:.2f}%</div>
+            </div>
+            """
+    kpi_html += f"""
+        <div class="kpi-card">
+            <div class="kpi-title">MARKET STATUS</div>
+            <div class="kpi-value" style="font-size: 14px; margin-top: 5px;">{get_market_status()}</div>
+        </div>
+    </div>
+    """
+    st.markdown(kpi_html, unsafe_allow_html=True)
 
-# ---------------------------------------------------------------------
-# DISPLAY RESULTS, SEARCH & EXPORT
-# ---------------------------------------------------------------------
-if "news_df" in st.session_state and not st.session_state["news_df"].empty:
-    df = st.session_state["news_df"].copy()
+    # -----------------------------------------------------------------
+    # MAIN SPLIT LAYOUT (CHART vs NEWS)
+    # -----------------------------------------------------------------
+    col_chart, col_news = st.columns([0.35, 0.65])
     
-    if "impact" in df.columns:
-        df = df[df["impact"].isin(impact_filter)]
-    
-    # Global Search Bar
-    search_query = st.text_input("Global Search (Filter by Keyword, Ticker, or Source)", placeholder="Type to filter results...")
-    if search_query:
-        mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
-        df = df[mask]
-    
-    # Summary Cards
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Articles", len(df))
-    col2.metric("High Impact Alerts", len(df[df["impact"] == "HIGH"]) if "impact" in df.columns else 0)
-    col3.metric("Stocks Covered", df["stock_symbol"].nunique() if "stock_symbol" in df.columns else 0)
-    col4.metric("Sources Polled", df["source"].nunique() if "source" in df.columns else 0)
+    with col_chart:
+        st.markdown("### NIFTY 50 Intraday")
+        chart_df = fetch_intraday_chart("^NSEI")
+        if not chart_df.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=chart_df.index, y=chart_df['Close'],
+                fill='tozeroy',
+                mode='lines',
+                line=dict(color='#0f9d58' if chart_df['Close'].iloc[-1] >= chart_df['Open'].iloc[0] else '#d23f31', width=2),
+                fillcolor='rgba(15, 157, 88, 0.1)' if chart_df['Close'].iloc[-1] >= chart_df['Open'].iloc[0] else 'rgba(210, 63, 49, 0.1)'
+            ))
+            fig.update_layout(
+                margin=dict(l=0, r=0, t=10, b=0),
+                height=250,
+                xaxis=dict(showgrid=False, visible=False),
+                yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)'),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        
+        st.markdown("### Terminal Controls")
+        refresh_interval = st.selectbox("Auto-Refresh Interval", options=["Manual", "1 Minute", "3 Minutes", "5 Minutes"])
+        lookback_hours = st.slider("Lookback Window (Hours)", 1, 72, 24)
+        impact_filter = st.multiselect("Impact Level Filter", ["HIGH", "MEDIUM", "LOW"], ["HIGH", "MEDIUM", "LOW"])
+        fetch_triggered = st.button("Manual Fetch", type="primary", use_container_width=True)
 
-    st.markdown("---")
-    
-    # Export to Excel
-    cols_to_export = [c for c in ["stock_symbol", "published_time", "impact", "category", "headline", "source", "source_type", "article_url"] if c in df.columns]
-    df_export = df[cols_to_export].copy()
-    
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        df_export.to_excel(writer, index=False, sheet_name='Live_News')
-    
-    st.download_button(
-        label="Download Excel Report (.xlsx)",
-        data=buffer,
-        file_name=f"NSE_News_{dt.datetime.now(IST).strftime('%Y%m%d_%H%M')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    with col_news:
+        if refresh_interval != "Manual":
+            interval_ms = int(refresh_interval.split()[0]) * 60000
+            st_autorefresh(interval=interval_ms, key="data_refresh")
 
-    st.markdown("---")
+        if fetch_triggered or (refresh_interval != "Manual"):
+            with st.spinner("Polling sources..."):
+                raw_articles = fetch_all_sources(st.session_state["watchlist"], hours_back=lookback_hours)
+                if raw_articles:
+                    processed = []
+                    for art in raw_articles:
+                        art["category"] = ", ".join(classify_categories(art["headline"]))
+                        art["impact"] = classify_impact(art["headline"])
+                        processed.append(art)
+                    clean_articles = deduplicate_articles(processed)
+                    st.session_state["news_df"] = pd.DataFrame(clean_articles)
+                else:
+                    st.session_state["news_df"] = pd.DataFrame()
 
-    # Data Formatting / Badging Rules
-    def style_impact(val):
-        if val == "HIGH":
-            return "color: #ff4b4b; font-weight: bold;"
-        elif val == "MEDIUM":
-            return "color: #ffa421; font-weight: bold;"
-        elif val == "LOW":
-            return "color: #21c354; font-weight: normal;"
-        return ""
+        if "news_df" in st.session_state and not st.session_state["news_df"].empty:
+            df = st.session_state["news_df"].copy()
+            if "impact" in df.columns:
+                df = df[df["impact"].isin(impact_filter)]
+            
+            col_search, col_export = st.columns([0.7, 0.3])
+            with col_search:
+                search_query = st.text_input("Global Search", placeholder="Filter by Ticker, Headline, or Source...", label_visibility="collapsed")
+            with col_export:
+                cols_to_export = [c for c in ["stock_symbol", "published_time", "impact", "category", "headline", "source", "source_type", "article_url"] if c in df.columns]
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df[cols_to_export].to_excel(writer, index=False, sheet_name='Live_News')
+                st.download_button("Export Excel", data=buffer, file_name=f"NSE_News_{dt.datetime.now(IST).strftime('%Y%m%d_%H%M')}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
-    def style_source_type(val):
-        if val in ["BSE", "NSE"]:
-            return "background-color: #2e4a7b; color: white; border-radius: 3px;"
-        elif val == "SEARCH_RESULT":
-            return "color: #888888;"
-        return ""
+            if search_query:
+                mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False)).any(axis=1)
+                df = df[mask]
+            
+            def style_impact(val):
+                if val == "HIGH": return "color: #d23f31; font-weight: bold;"
+                elif val == "MEDIUM": return "color: #f2a900; font-weight: bold;"
+                return "color: #0f9d58;"
 
-    # Apply Styler
-    styled_df = df_export.style.map(style_impact, subset=['impact']).map(style_source_type, subset=['source_type'])
-
-    # Display Table
-    st.dataframe(
-        styled_df,
-        column_config={
-            "article_url": st.column_config.LinkColumn("Source Link", display_text="Read Article"),
-            "published_time": "Published (IST)",
-            "stock_symbol": "Symbol",
-            "impact": "Impact",
-            "category": "Category",
-            "headline": "Headline",
-            "source": "Publisher",
-            "source_type": "Type"
-        },
-        use_container_width=True,
-        hide_index=True
-    )
-else:
-    st.info("Execute 'Fetch & Process News' or wait for the auto-refresh cycle to load data.")
+            styled_df = df[cols_to_export].style.map(style_impact, subset=['impact'])
+            
+            st.dataframe(
+                styled_df,
+                column_config={
+                    "article_url": st.column_config.LinkColumn("Link", display_text="Open"),
+                    "published_time": "Time (IST)",
+                    "stock_symbol": "Ticker",
+                    "impact": "Impact",
+                    "category": "Category",
+                    "headline": "Headline",
+                    "source": "Source",
+                    "source_type": "Type"
+                },
+                use_container_width=True,
+                hide_index=True,
+                height=600  # Fixed height for high density scrolling
+            )
+        else:
+            st.info("Execute 'Manual Fetch' or wait for auto-refresh to populate the terminal.")
