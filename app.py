@@ -215,13 +215,26 @@ with tab_news:
         st.markdown("### NIFTY 50 Intraday")
         chart_df = fetch_intraday_chart("^NSEI")
         if not chart_df.empty:
+            # Handle multi-index columns for newer versions of yfinance
+            if isinstance(chart_df.columns, pd.MultiIndex):
+                close_col = chart_df['Close'].squeeze()
+                open_col = chart_df['Open'].squeeze()
+            else:
+                close_col = chart_df['Close']
+                open_col = chart_df['Open']
+                
+            # Safely extract scalar floats to fix the ValueError
+            last_close = float(close_col.iloc[-1])
+            first_open = float(open_col.iloc[0])
+            is_positive = last_close >= first_open
+            
             fig = go.Figure()
             fig.add_trace(go.Scatter(
-                x=chart_df.index, y=chart_df['Close'],
+                x=chart_df.index, y=close_col,
                 fill='tozeroy',
                 mode='lines',
-                line=dict(color='#0f9d58' if chart_df['Close'].iloc[-1] >= chart_df['Open'].iloc[0] else '#d23f31', width=2),
-                fillcolor='rgba(15, 157, 88, 0.1)' if chart_df['Close'].iloc[-1] >= chart_df['Open'].iloc[0] else 'rgba(210, 63, 49, 0.1)'
+                line=dict(color='#0f9d58' if is_positive else '#d23f31', width=2),
+                fillcolor='rgba(15, 157, 88, 0.1)' if is_positive else 'rgba(210, 63, 49, 0.1)'
             ))
             fig.update_layout(
                 margin=dict(l=0, r=0, t=10, b=0),
@@ -298,7 +311,7 @@ with tab_news:
                 },
                 use_container_width=True,
                 hide_index=True,
-                height=600  # Fixed height for high density scrolling
+                height=600
             )
         else:
             st.info("Execute 'Manual Fetch' or wait for auto-refresh to populate the terminal.")
