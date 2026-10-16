@@ -10,51 +10,160 @@ from app.sources import fetch_all_sources
 from app.dedup_classify import classify_categories, classify_impact, deduplicate_articles
 
 IST = pytz.timezone("Asia/Kolkata")
-st.set_page_config(page_title="NSE Live News Terminal", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="NSE Live Terminal", layout="wide", initial_sidebar_state="collapsed")
 
 # ---------------------------------------------------------------------
-# HIGH-DENSITY CUSTOM CSS
+# BLOOMBERG-STYLE HIGH-DENSITY TERMINAL STYLING
 # ---------------------------------------------------------------------
 st.markdown("""
 <style>
-    .block-container { padding: 1rem 2rem !important; max-width: 100% !important; }
-    html, body, p, div, span, label, th, td { font-size: 13px !important; }
-    h1 { font-size: 22px !important; margin-bottom: 0px !important; }
-    h2 { font-size: 18px !important; }
-    h3 { font-size: 14px !important; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; color: #555;}
+    @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;600;700&display=swap');
+
+    /* Global Monospace & Terminal Reset */
+    html, body, [class*="css"], div, p, span, label, th, td, input, button {
+        font-family: 'Roboto Mono', 'Courier New', monospace !important;
+        font-size: 11px !important;
+        color: #e0e0e0 !important;
+    }
+
+    .stApp {
+        background-color: #000000 !important;
+    }
+
+    /* Zero out padding for max density */
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0.5rem !important;
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        max-width: 100% !important;
+    }
+
+    /* Full-Width Scrolling Ticker Tape */
+    .ticker-wrap {
+        width: 100%;
+        overflow: hidden;
+        background-color: #050505;
+        color: #ff9900;
+        border-top: 1px solid #222;
+        border-bottom: 1px solid #333;
+        margin-bottom: 8px;
+        padding: 4px 0;
+    }
+    .ticker {
+        display: inline-block;
+        white-space: nowrap;
+        animation: ticker 35s linear infinite;
+        font-size: 12px !important;
+        font-weight: 600;
+    }
+    .ticker__item {
+        display: inline-block;
+        padding: 0 25px;
+    }
+    @keyframes ticker {
+        0% { transform: translate3d(0, 0, 0); }
+        100% { transform: translate3d(-100%, 0, 0); }
+    }
+
+    /* Terminal KPI Panels */
+    .kpi-container {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+    .kpi-card {
+        flex: 1;
+        padding: 6px 10px;
+        border: 1px solid #333;
+        background-color: #080808;
+    }
+    .kpi-title {
+        font-size: 10px !important;
+        color: #888 !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .kpi-value {
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        color: #ffffff !important;
+        margin: 2px 0;
+    }
+    .kpi-change { font-size: 11px !important; font-weight: 700; }
     
-    .ticker-wrap { width: 100%; overflow: hidden; background-color: #1e1e1e; color: #ffffff; padding-left: 100%; border-bottom: 1px solid #333; margin-bottom: 15px; }
-    .ticker { display: inline-block; white-space: nowrap; padding-right: 100%; animation: ticker 40s linear infinite; font-family: monospace; font-size: 14px; line-height: 25px; }
-    .ticker__item { display: inline-block; padding: 0 20px; }
-    @keyframes ticker { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-100%, 0, 0); } }
+    /* Neon Semantic Colors */
+    .neon-green { color: #00ff66 !important; }
+    .neon-red { color: #ff3333 !important; }
+    .amber-text { color: #ff9900 !important; }
+
+    /* Terminal Border Boxes */
+    .terminal-box {
+        border: 1px solid #222;
+        background-color: #050505;
+        padding: 6px;
+        margin-bottom: 8px;
+    }
     
-    .kpi-container { display: flex; gap: 15px; margin-bottom: 15px; }
-    .kpi-card { flex: 1; padding: 10px 15px; border-radius: 4px; border: 1px solid #ddd; background-color: #f8f9fa; }
-    [data-theme="dark"] .kpi-card { background-color: #262730; border-color: #444; }
-    .kpi-title { font-size: 12px; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; color: #555;}
-    [data-theme="dark"] .kpi-title { color: #aaa; }
-    .kpi-value { font-size: 18px; font-weight: bold; margin-bottom: 2px;}
-    .kpi-change { font-size: 12px; font-weight: bold; }
-    .color-green { color: #0f9d58; } .color-red { color: #d23f31; }
-    .bg-green { background-color: rgba(15, 157, 88, 0.1); border: 1px solid rgba(15, 157, 88, 0.3); }
-    .bg-red { background-color: rgba(210, 63, 49, 0.1); border: 1px solid rgba(210, 63, 49, 0.3); }
-    
-    .movers-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-    .movers-table th, .movers-table td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #ddd; }
-    [data-theme="dark"] .movers-table th, [data-theme="dark"] .movers-table td { border-bottom: 1px solid #444; }
-    .movers-table th { background-color: rgba(0,0,0,0.05); font-weight: 600; }
+    .panel-header {
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        color: #ff9900 !important;
+        text-transform: uppercase;
+        border-bottom: 1px solid #222;
+        padding-bottom: 4px;
+        margin-bottom: 6px;
+        letter-spacing: 0.5px;
+    }
+
+    /* Compact Movers Table */
+    .movers-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .movers-table th {
+        color: #666 !important;
+        border-bottom: 1px solid #222;
+        text-align: left;
+        padding: 2px 4px;
+        font-size: 10px !important;
+    }
+    .movers-table td {
+        padding: 3px 4px;
+        border-bottom: 1px solid #111;
+        font-size: 11px !important;
+    }
+
+    /* Customizing Streamlit Controls */
+    div[data-baseweb="select"] > div {
+        background-color: #0a0a0a !important;
+        border: 1px solid #333 !important;
+        color: #e0e0e0 !important;
+        border-radius: 0px !important;
+    }
+    .stButton>button {
+        background-color: #111 !important;
+        color: #ff9900 !important;
+        border: 1px solid #ff9900 !important;
+        border-radius: 0px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase;
+    }
+    .stButton>button:hover {
+        background-color: #ff9900 !important;
+        color: #000000 !important;
+    }
+    .stDataFrame {
+        border: 1px solid #222 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
-# MCP INTEGRATION LAYER (NSE OFFICIAL DATA)
+# DATA LAYER & UTILITIES
 # ---------------------------------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_mcp_market_data(symbols):
-    """
-    INTEGRATION POINT: Replace the yfinance logic below with your MCP client call.
-    Example MCP Call: client.call_tool("cm_get_live_market_data", {"symbols": symbols})
-    """
     data = {}
     try:
         tickers = " ".join([f"{sym}.NS" for sym in symbols] + ["^NSEI", "^NSEBANK"])
@@ -62,8 +171,8 @@ def fetch_mcp_market_data(symbols):
         for sym in symbols + ["^NSEI", "^NSEBANK"]:
             lookup = f"{sym}.NS" if not sym.startswith("^") else sym
             if lookup in df.columns and len(df[lookup].dropna()) >= 2:
-                latest = df[lookup].iloc[-1]
-                prev = df[lookup].iloc[-2]
+                latest = float(df[lookup].iloc[-1])
+                prev = float(df[lookup].iloc[-2])
                 pct_change = ((latest - prev) / prev) * 100
                 data[sym] = {"price": latest, "change": pct_change}
     except Exception:
@@ -72,12 +181,7 @@ def fetch_mcp_market_data(symbols):
 
 @st.cache_data(ttl=60)
 def fetch_mcp_market_movers():
-    """
-    INTEGRATION POINT: Replace with MCP tool 'nse_get_market_movers'.
-    Returns two dataframes: Top Gainers and Top Losers.
-    """
     try:
-        # Fallback simulation for structure
         syms = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "TATAMOTORS.NS", "ITC.NS", "L&T.NS", "AXISBANK.NS"]
         df = yf.download(syms, period="2d", interval="1d", progress=False)['Close']
         changes = ((df.iloc[-1] - df.iloc[-2]) / df.iloc[-2] * 100).dropna()
@@ -105,39 +209,41 @@ def get_market_status():
     now = dt.datetime.now(IST)
     if now.weekday() >= 5: return "CLOSED (WEEKEND)"
     t = now.time()
-    if dt.time(9, 0) <= t < dt.time(9, 15): return "PRE-OPEN (09:00 - 09:15 IST)"
-    elif dt.time(9, 15) <= t <= dt.time(15, 30): return "OPEN (09:15 - 15:30 IST)"
+    if dt.time(9, 0) <= t < dt.time(9, 15): return "PRE-OPEN"
+    elif dt.time(9, 15) <= t <= dt.time(15, 30): return "OPEN"
     return "CLOSED"
 
 # ---------------------------------------------------------------------
-# APP STATE & TICKER TAPE
+# INITIALIZATION & TICKER TAPE
 # ---------------------------------------------------------------------
 if "watchlist" not in st.session_state:
     st.session_state["watchlist"] = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "TATAMOTORS"]
 
 market_data = fetch_mcp_market_data(st.session_state["watchlist"][:15])
 
+# Continuous Terminal Ticker
 ticker_html = '<div class="ticker-wrap"><div class="ticker">'
 for sym, details in market_data.items():
     if not sym.startswith("^"):
-        color = "#0f9d58" if details["change"] >= 0 else "#d23f31"
+        color_class = "neon-green" if details["change"] >= 0 else "neon-red"
         sign = "+" if details["change"] >= 0 else ""
-        ticker_html += f'<div class="ticker__item">{sym} <span style="color:{color}">{details["price"]:.2f} ({sign}{details["change"]:.2f}%)</span></div>'
+        ticker_html += f'<div class="ticker__item">{sym} <span class="{color_class}">{details["price"]:.2f} ({sign}{details["change"]:.2f}%)</span></div>'
 ticker_html += '</div></div>'
 st.markdown(ticker_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
-# KPI CARDS
+# HEADER & KPI ROW
 # ---------------------------------------------------------------------
 kpi_html = '<div class="kpi-container">\n'
 for idx_name, idx_sym in [("NIFTY 50", "^NSEI"), ("NIFTY BANK", "^NSEBANK")]:
     if idx_sym in market_data:
         val = market_data[idx_sym]
-        color_class = "color-green" if val["change"] >= 0 else "color-red"
-        bg_class = "bg-green" if val["change"] >= 0 else "bg-red"
+        color_class = "neon-green" if val["change"] >= 0 else "neon-red"
         sign = "+" if val["change"] >= 0 else ""
-        kpi_html += f'<div class="kpi-card {bg_class}">\n<div class="kpi-title">{idx_name}</div>\n<div class="kpi-value">{val["price"]:,.2f}</div>\n<div class="kpi-change {color_class}">{sign}{val["change"]:.2f}%</div>\n</div>\n'
-kpi_html += f'<div class="kpi-card">\n<div class="kpi-title">MARKET STATUS</div>\n<div class="kpi-value" style="font-size: 14px; margin-top: 5px;">{get_market_status()}</div>\n</div>\n</div>'
+        kpi_html += f'<div class="kpi-card">\n<div class="kpi-title">{idx_name}</div>\n<div class="kpi-value">{val["price"]:,.2f}</div>\n<div class="kpi-change {color_class}">{sign}{val["change"]:.2f}%</div>\n</div>\n'
+
+kpi_html += f'<div class="kpi-card">\n<div class="kpi-title">MARKET STATUS</div>\n<div class="kpi-value amber-text" style="font-size: 14px; margin-top: 2px;">{get_market_status()}</div>\n</div>\n'
+kpi_html += f'<div class="kpi-card">\n<div class="kpi-title">TERMINAL TIME</div>\n<div class="kpi-value" style="font-size: 14px; margin-top: 2px;">{dt.datetime.now(IST).strftime("%H:%M:%S IST")}</div>\n</div>\n</div>'
 st.markdown(kpi_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
@@ -146,7 +252,7 @@ st.markdown(kpi_html, unsafe_allow_html=True)
 col_chart, col_movers = st.columns([0.65, 0.35])
 
 with col_chart:
-    st.markdown("### NIFTY 50 INTRADAY")
+    st.markdown('<div class="panel-header">NIFTY 50 INTRADAY REAL-TIME</div>', unsafe_allow_html=True)
     chart_df = fetch_intraday_chart("^NSEI")
     if not chart_df.empty:
         if isinstance(chart_df.columns, pd.MultiIndex):
@@ -160,42 +266,41 @@ with col_chart:
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=chart_df.index, y=close_col, mode='lines',
-            line=dict(color='#0f9d58' if is_positive else '#d23f31', width=2)
+            line=dict(color='#00ff66' if is_positive else '#ff3333', width=1.5)
         ))
         fig.update_layout(
-            margin=dict(l=0, r=0, t=0, b=0), height=220,
+            margin=dict(l=0, r=0, t=0, b=0), height=180,
             xaxis=dict(showgrid=False, visible=False),
-            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', autorange=True),
-            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
+            yaxis=dict(showgrid=True, gridcolor='#222', autorange=True, font=dict(size=9, color='#666')),
+            plot_bgcolor='#000000', paper_bgcolor='#000000'
         )
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 with col_movers:
-    st.markdown("### MCP MARKET MOVERS")
+    st.markdown('<div class="panel-header">MCP TOP MARKET MOVERS</div>', unsafe_allow_html=True)
     gainers, losers = fetch_mcp_market_movers()
     
     col_g, col_l = st.columns(2)
     with col_g:
         if not gainers.empty:
-            html = '<table class="movers-table"><tr><th>Top Gainers</th><th>%</th></tr>'
+            html = '<table class="movers-table"><tr><th>GAINERS</th><th>%</th></tr>'
             for _, row in gainers.iterrows():
-                html += f'<tr><td>{row["Symbol"]}</td><td class="color-green">+{row["Change (%)"]:.2f}%</td></tr>'
+                html += f'<tr><td>{row["Symbol"]}</td><td class="neon-green">+{row["Change (%)"]:.2f}%</td></tr>'
             html += '</table>'
             st.markdown(html, unsafe_allow_html=True)
             
     with col_l:
         if not losers.empty:
-            html = '<table class="movers-table"><tr><th>Top Losers</th><th>%</th></tr>'
+            html = '<table class="movers-table"><tr><th>LOSERS</th><th>%</th></tr>'
             for _, row in losers.iterrows():
-                html += f'<tr><td>{row["Symbol"]}</td><td class="color-red">{row["Change (%)"]:.2f}%</td></tr>'
+                html += f'<tr><td>{row["Symbol"]}</td><td class="neon-red">{row["Change (%)"]:.2f}%</td></tr>'
             html += '</table>'
             st.markdown(html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
-# ROW 2: LIVE NEWS DESK & CONTROLS
+# ROW 2: LIVE NEWS TERMINAL
 # ---------------------------------------------------------------------
-st.markdown("---")
-st.markdown("### LIVE NEWS DESK")
+st.markdown('<div class="panel-header" style="margin-top: 10px;">LIVE NEWS & CORPORATE ANNOUNCEMENT DESK</div>', unsafe_allow_html=True)
 
 col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([0.2, 0.2, 0.4, 0.2])
 with col_ctrl1:
@@ -203,15 +308,15 @@ with col_ctrl1:
 with col_ctrl2:
     lookback_hours = st.number_input("Lookback (Hrs)", min_value=1, max_value=72, value=24, label_visibility="collapsed")
 with col_ctrl3:
-    search_query = st.text_input("Global Search", placeholder="Search ticker, headline...", label_visibility="collapsed")
+    search_query = st.text_input("Global Search", placeholder="FILTER BY TICKER, HEADLINE, SOURCE...", label_visibility="collapsed")
 with col_ctrl4:
-    fetch_triggered = st.button("Manual Fetch", type="primary", use_container_width=True)
+    fetch_triggered = st.button("RUN FETCH", type="primary", use_container_width=True)
 
 if refresh_interval != "Manual":
     st_autorefresh(interval=int(refresh_interval.split()[0]) * 60000, key="data_refresh")
 
 if fetch_triggered or (refresh_interval != "Manual"):
-    with st.spinner("Polling sources..."):
+    with st.spinner("POLLING SOURCES..."):
         raw_articles = fetch_all_sources(st.session_state["watchlist"], hours_back=lookback_hours)
         if raw_articles:
             processed = [{"category": ", ".join(classify_categories(a["headline"])), "impact": classify_impact(a["headline"]), **a} for a in raw_articles]
@@ -227,17 +332,17 @@ if "news_df" in st.session_state and not st.session_state["news_df"].empty:
     cols_to_export = [c for c in ["stock_symbol", "published_time", "impact", "category", "headline", "source", "source_type", "article_url"] if c in df.columns]
     
     styled_df = df[cols_to_export].style.map(
-        lambda v: "color: #d23f31; font-weight: bold;" if v == "HIGH" else ("color: #f2a900; font-weight: bold;" if v == "MEDIUM" else "color: #0f9d58;"), 
+        lambda v: "color: #ff3333; font-weight: bold;" if v == "HIGH" else ("color: #ff9900; font-weight: bold;" if v == "MEDIUM" else "color: #00ff66;"), 
         subset=['impact']
     )
     
     st.dataframe(
         styled_df,
         column_config={
-            "article_url": st.column_config.LinkColumn("Link", display_text="Open"),
-            "published_time": "Time (IST)", "stock_symbol": "Ticker", "impact": "Impact", "category": "Category", "headline": "Headline", "source": "Source", "source_type": "Type"
+            "article_url": st.column_config.LinkColumn("LINK", display_text="OPEN"),
+            "published_time": "TIME (IST)", "stock_symbol": "TICKER", "impact": "IMPACT", "category": "CATEGORY", "headline": "HEADLINE", "source": "SOURCE", "source_type": "TYPE"
         },
-        use_container_width=True, hide_index=True, height=500
+        use_container_width=True, hide_index=True, height=520
     )
 else:
-    st.info("Execute 'Manual Fetch' or wait for auto-refresh to populate the terminal.")
+    st.info("PRESS 'RUN FETCH' OR WAIT FOR AUTO-REFRESH CYCLE.")
