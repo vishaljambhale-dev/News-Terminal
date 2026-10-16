@@ -268,12 +268,8 @@ with col_chart:
             x=chart_df.index, y=close_col, mode='lines',
             line=dict(color='#00ff66' if is_positive else '#ff3333', width=1.5)
         ))
-        fig.update_layout(
-            margin=dict(l=0, r=0, t=0, b=0), height=180,
-            xaxis=dict(showgrid=False, visible=False),
-            yaxis=dict(showgrid=True, gridcolor='#222', autorange=True, font=dict(size=9, color='#666')),
-            plot_bgcolor='#000000', paper_bgcolor='#000000'
-        )
+        ClientCode	Strategy	Symbol	BB	RIC	StrikePrice	CEPE	Buy_Month	BuyQty	BuyLot	BuyPX	BuyValue	Sell_Month	SellQty	SellLot	SellPx	SellValue	Div	BPS	AD	OffQty	Tally	
+
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 with col_movers:
