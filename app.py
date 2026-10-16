@@ -156,6 +156,12 @@ st.markdown("""
     .stDataFrame {
         border: 1px solid #222 !important;
     }
+    .streamlit-expanderHeader {
+        font-size: 12px !important;
+        color: #ff9900 !important;
+        background-color: #111 !important;
+        border-bottom: 1px solid #333;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -218,6 +224,21 @@ def get_market_status():
 # ---------------------------------------------------------------------
 if "watchlist" not in st.session_state:
     st.session_state["watchlist"] = ["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "SBIN", "TATAMOTORS"]
+
+# Watchlist Configuration Expander
+with st.expander("WATCHLIST CONFIGURATION (CSV/XLSX)", expanded=False):
+    uploaded_file = st.file_uploader("UPLOAD WATCHLIST FILE", type=["csv", "xlsx"])
+    if uploaded_file is not None:
+        try:
+            df_upload = pd.read_csv(uploaded_file) if uploaded_file.name.endswith(".csv") else pd.read_excel(uploaded_file)
+            col_target = [c for c in df_upload.columns if "sym" in c.lower() or "stock" in c.lower()][0]
+            new_symbols = df_upload[col_target].dropna().astype(str).str.strip().str.upper().tolist()
+            st.session_state["watchlist"] = new_symbols
+            st.success(f"LOADED {len(new_symbols)} STOCKS FROM UPLOAD.")
+        except Exception:
+            st.error("FAILED TO PARSE. ENSURE IT CONTAINS A 'SYMBOL' COLUMN.")
+            
+    st.multiselect("CURRENT WATCHLIST", options=st.session_state["watchlist"], default=st.session_state["watchlist"], disabled=True)
 
 market_data = fetch_mcp_market_data(st.session_state["watchlist"][:15])
 
